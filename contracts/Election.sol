@@ -7,7 +7,7 @@ contract Election {
         uint id;
         string name;
         uint voteCount;
-    }//구조체.. 응원수는 어떻게 집계할까 고민,,,
+    }
 
     //Store Candidate
     //Fetch Candidate
@@ -19,11 +19,16 @@ contract Election {
     constructor () public {
         addCandidate("Candidate 1");
         addCandidate("Candidate 2");
-        //candidate = "Candidate 1";
     }
 
     function addCandidate (string _name) private {
         candidatesCount ++;
         candidates[candidatesCount] = Candidate(candidatesCount, _name, 0);
     }
+
+    function vote (uint _candidateId) public {
+        //후보자의 득표수를 업데이트 하기 위함
+        candidates[_candidateId].voteCount ++;
+
+    }// 공개적으로 설정하여 외부에서도 접근 가능하도록 함
 }
