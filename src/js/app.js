@@ -2,6 +2,7 @@ App = {
   web3Provider: null,
   contracts: {},
   account: '0x0',
+  hasVoted: false,
 
   init: function() {
     return App.initWeb3();
@@ -28,9 +29,30 @@ App = {
       // Connect provider to interact with contract
       App.contracts.Election.setProvider(App.web3Provider);
 
+      App.listenForEvents();
+
       return App.render();
     });
   },
+
+  // Listen for events emitted from the contract
+  listenForEvents: function() {
+    App.contracts.Election.deployed().then(function(instance) {
+      // Restart Chrome if you are unable to receive this event
+      // This is a known issue with Metamask
+      // https://github.com/MetaMask/metamask-extension/issues/2393
+      instance.votedEvent({}, {
+        fromBlock: 0,
+        toBlock: 'latest'
+      }).watch(function(error, event) {
+        console.log("event triggered", event)
+        // Reload when a new vote is recorded
+        App.render();
+      });
+    });
+  },
+
+  //클라이언트의 어플 업데이트, 투표된 이벤트 수신, 새로 고침을 수행(이벤트 수신)
 
   render: function() {
     var electionInstance;
@@ -45,20 +67,30 @@ App = {
       if (err === null) {
         App.account = account;
         $("#accountAddress").html("Your Account: " + account);
-      }//내 계정은~ 하고 간단하게 알려주는 기능
+      }
     });
 
     // Load contract data
-    //페이지에 후보자 나열하기
-    App.contracts.Election.deployed().then(function(instance) {
-      electionInstance = instance;//배포된 계약의 사본을 받아 우리 앱에 할당
+    App.contracts.Election.deployed().then(function (instance) {
+      electionInstance = instance;
       return electionInstance.candidatesCount();
-    }).then(function(candidatesCount) {
-      var candidatesResults = $("#candidatesResults");
-      candidatesResults.empty();
+    }).then(function (candidatesCount) {
 
+      // Store all promised to get candidate info
+      const promises = [];
       for (var i = 1; i <= candidatesCount; i++) {
-        electionInstance.candidates(i).then(function(candidate) {
+        promises.push(electionInstance.candidates(i));
+      }
+
+      // Once all candidates are received, add to dom
+      Promise.all(promises).then((candidates) => {
+        var candidatesResults = $("#candidatesResults");
+        candidatesResults.empty();
+
+        var candidatesSelect = $('#candidatesSelect');
+        candidatesSelect.empty();
+
+        candidates.forEach(candidate => {
           var id = candidate[0];
           var name = candidate[1];
           var voteCount = candidate[2];
@@ -66,14 +98,36 @@ App = {
           // Render candidate Result
           var candidateTemplate = "<tr><th>" + id + "</th><td>" + name + "</td><td>" + voteCount + "</td></tr>"
           candidatesResults.append(candidateTemplate);
-          //루프를 사용하여 매핑의 각 후보자를 나열
-        });
+
+          // Render candidate ballot option
+          var candidateOption = "<option value='" + id + "' >" + name + "</ option>"
+          candidatesSelect.append(candidateOption);          
+        })
+      });
+
+      return electionInstance.voters(App.account);
+    }).then(function(hasVoted) {
+      // Do not allow a user to vote
+      if(hasVoted) {
+        $('form').hide();
       }
-      
       loader.hide();
       content.show();
     }).catch(function(error) {
       console.warn(error);
+    });
+  },
+
+  castVote: function() {
+    var candidateId = $('#candidatesSelect').val();
+    App.contracts.Election.deployed().then(function(instance) {
+      return instance.vote(candidateId, { from: App.account });
+    }).then(function(result) {
+      // Wait for votes to update
+      $("#content").hide();
+      $("#loader").show();
+    }).catch(function(err) {
+      console.error(err);
     });
   }
 };
